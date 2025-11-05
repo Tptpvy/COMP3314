@@ -50,25 +50,22 @@ class Transformer(nn.Module):
         self.fc_out = nn.Linear(embed_dim, trg_vocab_size)
 
     def make_src_mask(self, src):
-        # Create padding mask for encoder (src_mask: [N, 1, 1, src_len])
-        src_mask = (src != self.src_pad_idx).unsqueeze(1).unsqueeze(2)
+        # Create padding mask for encoder - convert to [N, src_len] format
+        src_mask = (src != self.src_pad_idx)
         return src_mask.to(self.device)
 
     def make_trg_mask(self, trg):
-        # Create causal mask for decoder (trg_mask: [N, 1, trg_len, trg_len])
+        # Create causal mask for decoder - convert to [trg_len, trg_len] format
         N, trg_len = trg.shape
-        trg_mask = torch.tril(torch.ones((trg_len, trg_len))).expand(
-            N, 1, trg_len, trg_len
-        )
-        return trg_mask.to(self.device)
-
+        trg_mask = torch.tril(torch.ones(trg_len, trg_len)).to(self.device)
+        return trg_mask  # [trg_len, trg_len] - will be broadcast to batch
+        
     def forward(self, src, trg):
-        src_mask = self.make_src_mask(src)
-        trg_mask = self.make_trg_mask(trg)
+        src_mask = self.make_src_mask(src)  # [N, src_len]
+        trg_mask = self.make_trg_mask(trg)  # [trg_len, trg_len]
         
         enc_output = self.encoder(src, src_mask)
         dec_output = self.decoder(trg, enc_output, trg_mask, src_mask)
         
-        # Project to vocabulary size
         output = self.fc_out(dec_output)
         return output
