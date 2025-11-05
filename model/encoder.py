@@ -33,8 +33,12 @@ class Encoder(nn.Module):
         # Add word + position embeddings
         out = self.dropout(self.word_embedding(x) + self.position_embedding(positions))
         
+        # Convert mask format if needed
+        if mask is not None and mask.dim() == 4:
+            mask = mask.squeeze(1).squeeze(1)  # [batch_size, src_len]
+        
         # Pass through encoder layers
         for layer in self.layers:
-            out = layer(out, mask)
+            out = layer(out, key_padding_mask=mask)  # Use key_padding_mask for padding
             
         return out

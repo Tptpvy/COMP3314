@@ -24,6 +24,7 @@ class Decoder(nn.Module):
             DecoderBlock(embed_dim, num_heads, ff_dim, dropout) 
             for _ in range(num_layers)
         ])
+        
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, enc_out, trg_mask, src_mask):
