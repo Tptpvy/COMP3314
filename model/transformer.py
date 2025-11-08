@@ -54,11 +54,17 @@ class Transformer(nn.Module):
         src_mask = (src != self.src_pad_idx)
         return src_mask.to(self.device)
 
+    # def make_trg_mask(self, trg):
+    #     # Create causal mask for decoder - convert to [trg_len, trg_len] format
+    #     N, trg_len = trg.shape
+    #     trg_mask = torch.tril(torch.ones(trg_len, trg_len)).to(self.device)
+    #     return trg_mask  # [trg_len, trg_len] - will be broadcast to batch
+    
     def make_trg_mask(self, trg):
-        # Create causal mask for decoder - convert to [trg_len, trg_len] format
+        # Create causal mask for decoder
         N, trg_len = trg.shape
-        trg_mask = torch.tril(torch.ones(trg_len, trg_len)).to(self.device)
-        return trg_mask  # [trg_len, trg_len] - will be broadcast to batch
+        trg_mask = torch.tril(torch.ones((trg_len, trg_len))).expand(N, 1, trg_len, trg_len)
+        return trg_mask.to(self.device)
         
     def forward(self, src, trg):
         src_mask = self.make_src_mask(src)  # [N, src_len]
