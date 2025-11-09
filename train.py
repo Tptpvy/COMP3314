@@ -3,6 +3,89 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import ssl
+import urllib.request
+import os
+import tarfile
+from io import BytesIO
+
+# Disable SSL verification
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# Manual dataset download function
+def download_and_extract_multi30k():
+    """Download and extract Multi30k dataset using the working URLs"""
+    urls = {
+        'train': "https://raw.githubusercontent.com/neychev/small_DL_repo/master/datasets/Multi30k/training.tar.gz",
+        'valid': "https://raw.githubusercontent.com/neychev/small_DL_repo/master/datasets/Multi30k/validation.tar.gz",
+        'test': "https://raw.githubusercontent.com/neychev/small_DL_repo/master/datasets/Multi30k/mmt_task1_test2016.tar.gz"
+    }
+    
+    datasets = {}
+    
+    for split, url in urls.items():
+        print(f"Downloading {split} data from {url}...")
+        
+        # Download the tar.gz file
+        response = urllib.request.urlopen(url)
+        tar_data = response.read()
+        
+        # Extract from memory
+        with tarfile.open(fileobj=BytesIO(tar_data), mode='r:gz') as tar:
+            # Get the list of files in the archive
+            file_list = tar.getnames()
+            print(f"Files in {split} archive: {file_list}")
+            
+            # Extract files to memory
+            extracted_files = {}
+            for member in tar.getmembers():
+                if member.isfile():
+                    file_content = tar.extractfile(member).read()
+                    # Try different encodings
+                    encodings = ['utf-8', 'latin-1', 'cp1252']
+                    for encoding in encodings:
+                        try:
+                            decoded_content = file_content.decode(encoding)
+                            extracted_files[member.name] = decoded_content
+                            print(f"Successfully decoded {member.name} with {encoding}")
+                            break
+                        except UnicodeDecodeError:
+                            continue
+                    else:
+                        # If all encodings fail, use replace strategy
+                        extracted_files[member.name] = file_content.decode('utf-8', errors='replace')
+                        print(f"Used replace strategy for {member.name}")
+        
+        # Process the extracted files based on split
+        if split == 'train':
+            de_content = extracted_files.get('train.de', extracted_files.get('training/train.de', ''))
+            en_content = extracted_files.get('train.en', extracted_files.get('training/train.en', ''))
+        elif split == 'valid':
+            de_content = extracted_files.get('val.de', extracted_files.get('validation/val.de', ''))
+            en_content = extracted_files.get('val.en', extracted_files.get('validation/val.en', ''))
+        else:  # test
+            de_content = extracted_files.get('test2016.de', extracted_files.get('mmt16_task1/test2016.de', ''))
+            en_content = extracted_files.get('test2016.en', extracted_files.get('mmt16_task1/test2016.en', ''))
+        
+        # Split into sentences
+        de_sentences = de_content.strip().split('\n') if de_content else []
+        en_sentences = en_content.strip().split('\n') if en_content else []
+        
+        # Ensure same length
+        min_len = min(len(de_sentences), len(en_sentences))
+        de_sentences = de_sentences[:min_len]
+        en_sentences = en_sentences[:min_len]
+        
+        datasets[split] = list(zip(de_sentences, en_sentences))
+        print(f"Loaded {min_len} {split} samples")
+    
+    return datasets['train'], datasets['valid'], datasets['test']
+
+# Download dataset first
+print("Downloading Multi30k dataset...")
+train_data_raw, valid_data_raw, test_data_raw = download_and_extract_multi30k()
+
+# Now continue with torchtext 0.6 imports and setup
 from torchtext.datasets import Multi30k
 from torchtext.data import Field, BucketIterator
 import spacy
@@ -12,7 +95,7 @@ import math
 import time
 from nltk.translate.bleu_score import corpus_bleu
 
-from transformer import Transformer
+from model.transformer import Transformer
 
 # Set random seeds for reproducibility
 torch.manual_seed(42)
@@ -43,9 +126,38 @@ def tokenize_en(text):
 SRC = Field(tokenize=tokenize_de, init_token='<sos>', eos_token='<eos>', lower=True)
 TRG = Field(tokenize=tokenize_en, init_token='<sos>', eos_token='<eos>', lower=True)
 
-# Load Multi30k dataset
-print("Loading Multi30k dataset...")
-train_data, valid_data, test_data = Multi30k.splits(exts=('.de', '.en'), fields=(SRC, TRG))
+# Load Multi30k dataset using torchtext
+print("Loading Multi30k dataset with torchtext...")
+try:
+    train_data, valid_data, test_data = Multi30k.splits(exts=('.de', '.en'), fields=(SRC, TRG))
+    print("Successfully loaded dataset with torchtext")
+except Exception as e:
+    print(f"Failed to load with torchtext: {e}")
+    print("Creating dataset from manually downloaded data...")
+    
+    # Create temporary files for torchtext to read
+    os.makedirs('.data/multi30k', exist_ok=True)
+    
+    # Write train data
+    with open('.data/multi30k/train.de', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([de for de, en in train_data_raw]))
+    with open('.data/multi30k/train.en', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([en for de, en in train_data_raw]))
+    
+    # Write validation data  
+    with open('.data/multi30k/val.de', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([de for de, en in valid_data_raw]))
+    with open('.data/multi30k/val.en', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([en for de, en in valid_data_raw]))
+    
+    # Write test data
+    with open('.data/multi30k/test2016.de', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([de for de, en in test_data_raw]))
+    with open('.data/multi30k/test2016.en', 'w', encoding='utf-8') as f:
+        f.write('\n'.join([en for de, en in test_data_raw]))
+    
+    # Now try loading again
+    train_data, valid_data, test_data = Multi30k.splits(exts=('.de', '.en'), fields=(SRC, TRG))
 
 # Build vocabulary
 print("Building vocabulary...")
@@ -66,7 +178,6 @@ ff_dim = 512
 num_layers = 3
 dropout = 0.1
 max_length = 100
-device = device
 
 print(f"Source vocab size: {src_vocab_size}")
 print(f"Target vocab size: {trg_vocab_size}")

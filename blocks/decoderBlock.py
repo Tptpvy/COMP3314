@@ -1,42 +1,50 @@
+# blocks/decoderBlock.py
 import torch
-from torch import nn
-
-from blocks.transformerBlock import TransformerBlock
+import torch.nn as nn
 
 class DecoderBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1):
         super(DecoderBlock, self).__init__()
-        
-        # Self-attention (causal) - uses TransformerBlock
-        self.self_attention = TransformerBlock(embed_dim, num_heads, ff_dim, dropout)
-        
-        # Cross-attention (encoder-decoder) - uses TransformerBlock
-        self.cross_attention = TransformerBlock(embed_dim, num_heads, ff_dim, dropout)
-        
-    def forward(self, x, enc_out, trg_mask, src_mask):
-        """
-        Args:
-            x: [batch_size, trg_len, embed_dim]
-            enc_out: [batch_size, src_len, embed_dim]
-            trg_mask: [batch_size, 1, trg_len, trg_len] (causal mask)
-            src_mask: [batch_size, 1, 1, src_len] (padding mask)
-        """
-        # Convert mask formats
-        if trg_mask is not None and trg_mask.dim() == 4:
-            trg_mask = trg_mask.squeeze(1)  # [batch_size, trg_len, trg_len]
-        
-        if src_mask is not None and src_mask.dim() == 4:
-            src_mask = src_mask.squeeze(1).squeeze(1)  # [batch_size, src_len]
-        
-        # Self-attention with causal masking
-        x = self.self_attention(x, attn_mask=trg_mask)
-        
-        # Cross-attention with encoder output
-        x = self.cross_attention(
-            query=x,
-            key=enc_out,
-            value=enc_out,
-            key_padding_mask=src_mask  # Use source padding mask
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim, num_heads, dropout=dropout, batch_first=True
         )
+        self.cross_attention = nn.MultiheadAttention(
+            embed_dim, num_heads, dropout=dropout, batch_first=True
+        )
+        
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.norm3 = nn.LayerNorm(embed_dim)
+        
+        self.ff = nn.Sequential(
+            nn.Linear(embed_dim, ff_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(ff_dim, embed_dim),
+            nn.Dropout(dropout)
+        )
+        
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x, enc_output, causal_mask, src_key_padding_mask):
+        # Self-attention with causal mask
+        self_attn, _ = self.self_attention(
+            x, x, x,
+            attn_mask=causal_mask,
+            need_weights=False
+        )
+        x = self.norm1(x + self.dropout(self_attn))
+        
+        # Cross-attention
+        cross_attn, _ = self.cross_attention(
+            x, enc_output, enc_output,
+            key_padding_mask=src_key_padding_mask,
+            need_weights=False
+        )
+        x = self.norm2(x + self.dropout(cross_attn))
+        
+        # Feed forward
+        ff_output = self.ff(x)
+        x = self.norm3(x + self.dropout(ff_output))
         
         return x
