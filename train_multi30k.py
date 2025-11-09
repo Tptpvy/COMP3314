@@ -1,16 +1,13 @@
-# train.py
+# train_multi30k.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import ssl
 import urllib.request
 import os
 import tarfile
 from io import BytesIO
-
-# Disable SSL verification
-ssl._create_default_https_context = ssl._create_unverified_context
+import matplotlib.pyplot as plt
 
 # Manual dataset download function
 def download_and_extract_multi30k():
@@ -167,34 +164,33 @@ TRG.build_vocab(train_data, min_freq=2)
 print(f"German vocabulary size: {len(SRC.vocab)}")
 print(f"English vocabulary size: {len(TRG.vocab)}")
 
-# Model hyperparameters (smaller than original paper due to resource constraints)
 src_vocab_size = len(SRC.vocab)
-trg_vocab_size = len(TRG.vocab)
+tgt_vocab_size = len(TRG.vocab)
 src_pad_idx = SRC.vocab.stoi['<pad>']
-trg_pad_idx = TRG.vocab.stoi['<pad>']
-embed_dim = 256
-num_heads = 8
-ff_dim = 512
-num_layers = 3
-dropout = 0.1
-max_length = 100
+tgt_pad_idx = TRG.vocab.stoi['<pad>']
+
+d_model = 512     
+n_heads = 8       
+d_ff = 2048        
+num_layers = 6   
+dropout = 0.1      
+max_len = 100
 
 print(f"Source vocab size: {src_vocab_size}")
-print(f"Target vocab size: {trg_vocab_size}")
+print(f"Target vocab size: {tgt_vocab_size}")
 
-# Create model
 model = Transformer(
     src_vocab_size=src_vocab_size,
-    trg_vocab_size=trg_vocab_size,
+    trg_vocab_size=tgt_vocab_size,
     src_pad_idx=src_pad_idx,
-    trg_pad_idx=trg_pad_idx,
-    d_model=embed_dim,
-    num_heads=num_heads,
-    d_ff=ff_dim,
+    trg_pad_idx=tgt_pad_idx,
+    d_model=d_model,
+    num_heads=n_heads,
+    d_ff=d_ff,
     num_layers=num_layers,
     dropout=dropout,
     device=device,
-    max_length=max_length
+    max_length=max_len
 ).to(device)
 
 print(f"Model has {sum(p.numel() for p in model.parameters()):,} parameters")
@@ -208,11 +204,11 @@ train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
     device=device
 )
 
-# Training setup
-optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
-criterion = nn.CrossEntropyLoss(ignore_index=trg_pad_idx, label_smoothing=0.1)
+# Training setup 
+optimizer = optim.Adam(model.parameters(), lr=0.0, betas=(0.9, 0.98), eps=1e-9)
+criterion = nn.CrossEntropyLoss(ignore_index=tgt_pad_idx, label_smoothing=0.1)  # Label smoothing ϵ=0.1
 
-# Learning rate scheduler (from Attention is All You Need)
+# Learning rate scheduler 
 class TransformerScheduler:
     def __init__(self, optimizer, d_model, warmup_steps=4000):
         self.optimizer = optimizer
@@ -226,7 +222,7 @@ class TransformerScheduler:
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
 
-scheduler = TransformerScheduler(optimizer, embed_dim)
+scheduler = TransformerScheduler(optimizer, d_model)
 
 def train_epoch(model, iterator, optimizer, criterion, clip):
     model.train()
@@ -339,11 +335,51 @@ def translate_batch(model, src, trg_vocab, max_len=50):
     
     return translations
 
+def plot_training_results(train_losses, valid_losses, bleu_scores, epochs, save_path):
+    """Plot training and validation losses along with BLEU scores"""
+    # Create results directory if it doesn't exist
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    # Create subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # Plot losses
+    epochs_range = range(1, epochs + 1)
+    ax1.plot(epochs_range, train_losses, 'b-', label='Train Loss', linewidth=2)
+    ax1.plot(epochs_range, valid_losses, 'r-', label='Validation Loss', linewidth=2)
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
+    ax1.set_title('Training and Validation Loss')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot BLEU scores (only for epochs where it was calculated)
+    bleu_epochs = [i for i in epochs_range if (i) % 5 == 0]
+    if bleu_scores:
+        ax2.plot(bleu_epochs, bleu_scores, 'g-o', label='BLEU Score', linewidth=2, markersize=6)
+        ax2.set_xlabel('Epoch')
+        ax2.set_ylabel('BLEU Score')
+        ax2.set_title('BLEU Score Progress')
+        ax2.set_ylim(0, max(bleu_scores) * 1.1 if bleu_scores else (0, 1))
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Plot saved to {save_path}")
+
 # Training loop
 N_EPOCHS = 20
 CLIP = 1.0
 
 best_valid_loss = float('inf')
+
+# Lists to store metrics for plotting
+train_losses = []
+valid_losses = []
+bleu_scores = []
 
 print("Starting training...")
 for epoch in range(N_EPOCHS):
@@ -352,13 +388,19 @@ for epoch in range(N_EPOCHS):
     train_loss = train_epoch(model, train_iterator, optimizer, criterion, CLIP)
     valid_loss = evaluate_epoch(model, valid_iterator, criterion)
     
+    # Store metrics
+    train_losses.append(train_loss)
+    valid_losses.append(valid_loss)
+    
     end_time = time.time()
     epoch_mins, epoch_secs = divmod(end_time - start_time, 60)
     
     # Calculate BLEU every 5 epochs
+    current_bleu = None
     if (epoch + 1) % 5 == 0:
-        bleu_score = calculate_bleu(model, valid_iterator, TRG)
-        print(f'BLEU Score: {bleu_score:.4f}')
+        current_bleu = calculate_bleu(model, valid_iterator, TRG)
+        bleu_scores.append(current_bleu)
+        print(f'BLEU Score: {current_bleu:.4f}')
     
     # Save best model
     if valid_loss < best_valid_loss:
@@ -369,6 +411,9 @@ for epoch in range(N_EPOCHS):
     print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
     print(f'\tValid Loss: {valid_loss:.3f} | Valid PPL: {math.exp(valid_loss):7.3f}')
 
+# Plot results after training
+plot_training_results(train_losses, valid_losses, bleu_scores, N_EPOCHS, 'results/Multi30k_results.png')
+
 # Final evaluation on test set
 print("Evaluating on test set...")
 model.load_state_dict(torch.load('best-transformer-model.pt'))
@@ -377,3 +422,17 @@ test_bleu = calculate_bleu(model, test_iterator, TRG)
 
 print(f'Final Test Loss: {test_loss:.3f} | Test PPL: {math.exp(test_loss):7.3f}')
 print(f'Final Test BLEU Score: {test_bleu:.4f}')
+
+# Save final metrics to a text file
+with open('results/Multi30k_training_summary.txt', 'w') as f:
+    f.write("Training Summary\n")
+    f.write("================\n")
+    f.write(f"Final Train Loss: {train_losses[-1]:.4f}\n")
+    f.write(f"Final Valid Loss: {valid_losses[-1]:.4f}\n")
+    f.write(f"Final Test Loss: {test_loss:.4f}\n")
+    f.write(f"Final Test BLEU: {test_bleu:.4f}\n")
+    f.write(f"Best Valid Loss: {best_valid_loss:.4f}\n")
+    f.write(f"Best Valid PPL: {math.exp(best_valid_loss):.4f}\n")
+    f.write(f"Model Parameters: {sum(p.numel() for p in model.parameters()):,}\n")
+
+print("Training completed! Check results/ folder for plots and summary.")
