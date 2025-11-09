@@ -371,7 +371,7 @@ def plot_training_results(train_losses, valid_losses, bleu_scores, epochs, save_
     print(f"Plot saved to {save_path}")
 
 # Training loop
-N_EPOCHS = 20
+N_EPOCHS = 100
 CLIP = 1.0
 
 best_valid_loss = float('inf')
