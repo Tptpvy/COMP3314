@@ -11,7 +11,7 @@ class Decoder(nn.Module):
         self.max_length = max_length
         self.embed_dim = embed_dim
         self.word_embedding = nn.Embedding(vocab_size, embed_dim)
-        self.pos_encoding = SinusoidalPositionalEncoding(embed_dim, max_length)
+        self.pos_encoding = SinusoidalPositionalEncoding(embed_dim, max_length)  # Keeping Sinusoidal
         
         self.layers = nn.ModuleList([
             DecoderBlock(embed_dim, num_heads, ff_dim, dropout) 
@@ -23,8 +23,9 @@ class Decoder(nn.Module):
     def forward(self, x, enc_output, trg_mask, src_mask):
         N, seq_length = x.shape
         
+        # Add embeddings with scaling
         x = self.word_embedding(x) * math.sqrt(self.embed_dim)
-        x = self.dropout(self.pos_encoding(x))
+        x = self.dropout(self.pos_encoding(x))  # Keeping Sinusoidal
         
         if trg_mask is not None:
             causal_mask = torch.triu(
