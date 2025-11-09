@@ -1,4 +1,3 @@
-# blocks/decoderBlock.py
 import torch
 import torch.nn as nn
 
@@ -18,33 +17,32 @@ class DecoderBlock(nn.Module):
         
         self.ff = nn.Sequential(
             nn.Linear(embed_dim, ff_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(ff_dim, embed_dim),
-            nn.Dropout(dropout)
         )
         
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, enc_output, causal_mask, src_key_padding_mask):
-        # Self-attention with causal mask
+        norm_x = self.norm1(x)
         self_attn, _ = self.self_attention(
-            x, x, x,
+            norm_x, norm_x, norm_x,
             attn_mask=causal_mask,
             need_weights=False
         )
-        x = self.norm1(x + self.dropout(self_attn))
+        x = x + self.dropout(self_attn)
         
-        # Cross-attention
+        norm_x = self.norm2(x)
         cross_attn, _ = self.cross_attention(
-            x, enc_output, enc_output,
+            norm_x, enc_output, enc_output,
             key_padding_mask=src_key_padding_mask,
             need_weights=False
         )
-        x = self.norm2(x + self.dropout(cross_attn))
+        x = x + self.dropout(cross_attn)
         
-        # Feed forward
-        ff_output = self.ff(x)
-        x = self.norm3(x + self.dropout(ff_output))
+        norm_x = self.norm3(x)
+        ff_output = self.ff(norm_x)
+        x = x + self.dropout(ff_output)
         
         return x

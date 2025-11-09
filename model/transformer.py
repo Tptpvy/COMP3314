@@ -1,4 +1,3 @@
-# model/transformer.py
 import torch
 import torch.nn as nn
 from model.encoder import Encoder
@@ -11,10 +10,10 @@ class Transformer(nn.Module):
         trg_vocab_size,
         src_pad_idx,
         trg_pad_idx,
-        embed_dim=512,        
-        num_heads=8,          
-        ff_dim=2048,          
-        num_layers=6,         
+        d_model=512,
+        num_heads=8,
+        d_ff=2048,
+        num_layers=6,
         dropout=0.1,
         device="cpu",
         max_length=100
@@ -22,18 +21,18 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
         
         self.encoder = Encoder(
-            src_vocab_size, embed_dim, num_heads, ff_dim, num_layers, 
+            src_vocab_size, d_model, num_heads, d_ff, num_layers, 
             dropout, max_length, device
         )
         self.decoder = Decoder(
-            trg_vocab_size, embed_dim, num_heads, ff_dim, num_layers,
+            trg_vocab_size, d_model, num_heads, d_ff, num_layers,
             dropout, max_length, device
         )
         
         self.src_pad_idx = src_pad_idx
         self.trg_pad_idx = trg_pad_idx
         self.device = device
-        self.fc_out = nn.Linear(embed_dim, trg_vocab_size)
+        self.fc_out = nn.Linear(d_model, trg_vocab_size)
 
     def make_src_mask(self, src):
         src_mask = (src != self.src_pad_idx).unsqueeze(1).unsqueeze(2)

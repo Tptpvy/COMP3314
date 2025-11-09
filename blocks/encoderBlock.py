@@ -1,4 +1,3 @@
-# blocks/encoderBlock.py
 import torch
 import torch.nn as nn
 
@@ -13,25 +12,24 @@ class EncoderBlock(nn.Module):
         
         self.ff = nn.Sequential(
             nn.Linear(embed_dim, ff_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(ff_dim, embed_dim),
-            nn.Dropout(dropout)
         )
         
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, key_padding_mask=None):
-        # Self-attention
+        norm_x = self.norm1(x)
         attn_output, _ = self.self_attention(
-            x, x, x, 
+            norm_x, norm_x, norm_x, 
             key_padding_mask=key_padding_mask,
             need_weights=False
         )
-        x = self.norm1(x + self.dropout(attn_output))
+        x = x + self.dropout(attn_output)
         
-        # Feed forward
-        ff_output = self.ff(x)
-        x = self.norm2(x + self.dropout(ff_output))
+        norm_x = self.norm2(x)
+        ff_output = self.ff(norm_x)
+        x = x + self.dropout(ff_output)
         
         return x
