@@ -1,4 +1,5 @@
 # model/decoder.py
+import math
 import torch
 import torch.nn as nn
 from blocks.decoderBlock import DecoderBlock
@@ -8,6 +9,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.device = device
         self.max_length = max_length
+        self.embed_dim = embed_dim
         self.word_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(max_length, embed_dim)
         
@@ -28,19 +30,18 @@ class Decoder(nn.Module):
         """
         N, seq_length = x.shape
         
-        # Clamp positions to max_length
-        positions = torch.arange(0, seq_length).expand(N, seq_length).to(self.device)
-        positions = torch.clamp(positions, 0, self.max_length - 1)
+        # Create positions directly on the correct device
+        positions = torch.arange(0, seq_length, device=self.device).expand(N, seq_length)
         
         # Add embeddings
-        x = self.dropout(self.word_embedding(x) + self.position_embedding(positions))
+        x = self.word_embedding(x) * math.sqrt(self.embed_dim)  # Scale embeddings
+        x = self.dropout(x + self.position_embedding(positions))
         # x: [batch_size, trg_len, embed_dim]
         
-        # Convert masks - FIX: Ensure sequence length is reasonable
+        # Convert masks
         if trg_mask is not None:
             # For causal mask: [trg_len, trg_len]
-            # Clamp sequence length to avoid CUDA errors
-            seq_length = min(seq_length, 500)  # Add reasonable upper limit
+            # Create directly on device
             causal_mask = torch.triu(
                 torch.ones(seq_length, seq_length, device=x.device) * float('-inf'), 
                 diagonal=1

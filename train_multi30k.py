@@ -210,7 +210,7 @@ train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
 
 # Training setup
 optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
-criterion = nn.CrossEntropyLoss(ignore_index=trg_pad_idx)
+criterion = nn.CrossEntropyLoss(ignore_index=trg_pad_idx, label_smoothing=0.1)
 
 # Learning rate scheduler (from Attention is All You Need)
 class TransformerScheduler:

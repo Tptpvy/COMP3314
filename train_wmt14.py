@@ -132,7 +132,7 @@ num_heads = 8
 ff_dim = 2048
 num_layers = 6
 dropout = 0.1
-max_length = 100
+max_length = 300
 
 print(f"Source vocab size: {src_vocab_size}")
 print(f"Target vocab size: {trg_vocab_size}")
