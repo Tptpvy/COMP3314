@@ -54,7 +54,7 @@ Batch Size: 128 <br>
 - Scaled dot-product attention <br>
 
 3. Feed-Forward Networks
-- GELU Activation (Gaussian Error Linear Unit)
+- ReLU (Rectified Linear Unit)
 - Two linear transformations with expansion factor 4
 - Position-wise fully connected layers
 
