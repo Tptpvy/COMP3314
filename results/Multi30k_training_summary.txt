@@ -1,9 +1,9 @@
 Training Summary
 ================
-Final Train Loss: 1.2894
-Final Valid Loss: 3.2214
-Final Test Loss: 2.8077
-Final Test BLEU: 0.3035
-Best Valid Loss: 2.7927
-Best Valid PPL: 16.3250
+Final Train Loss: 1.2850
+Final Valid Loss: 3.2498
+Final Test Loss: 2.8209
+Final Test BLEU: 0.2983
+Best Valid Loss: 2.8096
+Best Valid PPL: 16.6029
 Model Parameters: 54,199,557

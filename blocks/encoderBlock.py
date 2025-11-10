@@ -12,7 +12,7 @@ class EncoderBlock(nn.Module):
         
         self.ff = nn.Sequential(
             nn.Linear(embed_dim, ff_dim),
-            nn.GELU(),  # Keeping GELU
+            nn.ReLU(), 
             nn.Dropout(dropout),
             nn.Linear(ff_dim, embed_dim),
         )
